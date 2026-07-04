@@ -1,0 +1,91 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Executive Accountability — Local Facilities (all)</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+ html,body{margin:0;height:100%;background:#0e1116;font-family:-apple-system,Segoe UI,Roboto,sans-serif}
+ #map{position:absolute;inset:0}
+ .panel{position:absolute;top:12px;left:12px;z-index:1000;background:rgba(16,20,28,.93);
+  color:#e6ecf5;border:1px solid #2a3547;border-radius:10px;padding:12px 14px;max-width:270px;
+  box-shadow:0 6px 20px rgba(0,0,0,.5)}
+ .panel h1{font-size:14px;margin:0 0 4px}
+ .panel p{font-size:11px;line-height:1.45;color:#9fb0c7;margin:6px 0}
+ .row{display:flex;align-items:center;gap:8px;font-size:12.5px;margin:5px 0;cursor:pointer;user-select:none}
+ .dot{width:11px;height:11px;border-radius:50%;flex:none}
+ .count{margin-left:auto;color:#8ea3bd;font-variant-numeric:tabular-nums}
+ .load{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:1200;
+  background:rgba(16,20,28,.96);color:#cfe0f5;border:1px solid #2a3547;border-radius:10px;padding:16px 22px;font-size:13px}
+ .err{color:#ff9b9b}
+</style></head><body>
+<div id="map"></div>
+<div class="panel">
+ <h1>Local government footprint</h1>
+ <p>Every police station, prison, town hall, fire station &amp; government office on OpenStreetMap — raw points, no clustering. Zoom/pan freely; click near a dot for its name.</p>
+ <div id="toggles"></div>
+ <p id="stat" style="color:#6f8299;margin-top:8px"></p>
+</div>
+<div class="load" id="load">Loading data…</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+// If this HTML sits in the same repo/folder as the 5 JSON files, leave DATA_BASE="".
+// Otherwise set it to the folder URL (must end with "/").
+const DATA_BASE = "";
+const FILES=[["execmap_local_police.json",0],["execmap_local_prison.json",1],
+             ["execmap_local_townhall.json",2],["execmap_local_firestation.json",3],
+             ["execmap_local_govoffice.json",4]];
+
+const CAT=[["Police stations","#5aa9ff"],["Prisons","#ff6b6b"],["Town halls","#ffd166"],
+           ["Fire stations","#ff9f43"],["Government offices","#6be675"]];
+let LAT,LNG,C,NAME,N=0; const EN=[true,true,true,true,true];
+
+const map=L.map("map",{preferCanvas:true,worldCopyJump:true}).setView([20,10],2);
+L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+  {attribution:"&copy; OpenStreetMap &copy; CARTO",subdomains:"abcd",maxZoom:19}).addTo(map);
+
+const Dots=L.Layer.extend({
+  onAdd:function(m){ this._m=m; const c=this._c=L.DomUtil.create("canvas");
+    c.style.position="absolute"; const s=m.getSize(); c.width=s.x; c.height=s.y;
+    m.getPanes().overlayPane.appendChild(c);
+    m.on("moveend zoomend resize",this._draw,this); this._draw(); },
+  _draw:function(){ const m=this._m,c=this._c,s=m.getSize();
+    L.DomUtil.setPosition(c,m.containerPointToLayerPoint([0,0]));
+    if(c.width!==s.x)c.width=s.x; if(c.height!==s.y)c.height=s.y;
+    const ctx=c.getContext("2d"); ctx.clearRect(0,0,s.x,s.y);
+    if(!N)return; const b=m.getBounds(),S=b.getSouth(),No=b.getNorth(),W=b.getWest(),E=b.getEast();
+    let drawn=0;
+    for(let i=0;i<N;i++){ const cat=C[i]; if(!EN[cat])continue;
+      const la=LAT[i],lo=LNG[i]; if(la<S||la>No||lo<W||lo>E)continue;
+      const p=m.latLngToContainerPoint([la,lo]);
+      ctx.fillStyle=CAT[cat][1]; ctx.fillRect(p.x-1,p.y-1,2.4,2.4); drawn++; }
+    document.getElementById("stat").textContent=N.toLocaleString()+" total \u00b7 "+drawn.toLocaleString()+" in view";
+  }
+});
+let layer;
+map.on("click",function(e){ if(!N)return; const cp=e.containerPoint; let best=-1,bd=64;
+  const b=map.getBounds(),S=b.getSouth(),No=b.getNorth(),W=b.getWest(),E=b.getEast();
+  for(let i=0;i<N;i++){ if(!EN[C[i]])continue; const la=LAT[i],lo=LNG[i];
+    if(la<S||la>No||lo<W||lo>E)continue; const p=map.latLngToContainerPoint([la,lo]);
+    const d=(p.x-cp.x)*(p.x-cp.x)+(p.y-cp.y)*(p.y-cp.y); if(d<bd){bd=d;best=i;} }
+  if(best>=0) L.popup().setLatLng([LAT[best],LNG[best]])
+    .setContent("<b>"+(NAME[best]||"(unnamed)")+"</b><br><span style='color:#8ea3bd;font-size:11px'>"+CAT[C[best]][0].replace(/s$/,"")+"</span>").openOn(map);
+});
+function buildToggles(counts){ const box=document.getElementById("toggles"); box.innerHTML="";
+  CAT.forEach((cat,i)=>{ const row=document.createElement("div"); row.className="row";
+    row.innerHTML='<span class="dot" style="background:'+cat[1]+'"></span>'+cat[0]+
+      '<span class="count">'+(counts[i]||0).toLocaleString()+'</span>';
+    row.onclick=()=>{ EN[i]=!EN[i]; row.style.opacity=EN[i]?1:.4; layer._draw(); };
+    box.appendChild(row); }); }
+Promise.all(FILES.map(f=>fetch(DATA_BASE+f[0])
+    .then(r=>{ if(!r.ok)throw new Error(f[0]+": HTTP "+r.status); return r.json(); })
+    .then(rows=>({code:f[1],rows}))))
+  .then(parts=>{ N=parts.reduce((a,p)=>a+p.rows.length,0);
+    LAT=new Float64Array(N); LNG=new Float64Array(N); C=new Uint8Array(N); NAME=new Array(N);
+    const counts=[0,0,0,0,0]; let k=0;
+    parts.forEach(p=>{ for(let i=0;i<p.rows.length;i++){ const r=p.rows[i];
+      LAT[k]=r[0]; LNG[k]=r[1]; C[k]=p.code; NAME[k]=r[2]||""; counts[p.code]++; k++; } });
+    buildToggles(counts); layer=new Dots(); map.addLayer(layer);
+    document.getElementById("load").style.display="none"; })
+  .catch(err=>{ document.getElementById("load").innerHTML=
+    '<span class="err">Could not load data.</span><br><span style="font-size:11px;color:#9fb0c7">'+
+    'Put the 5 execmap_local_*.json files beside this HTML (or set DATA_BASE).<br>'+err+'</span>'; });
+</script></body></html>

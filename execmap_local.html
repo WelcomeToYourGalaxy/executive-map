@@ -27,16 +27,15 @@
 <div class="load" id="load">Loading data…</div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script>
-// If this HTML sits in the same repo/folder as the 5 JSON files, leave DATA_BASE="".
-// Otherwise set it to the folder URL (must end with "/").
-const DATA_BASE = "";
+// Points at the GitHub Pages repo where the 5 JSON files live.
+const DATA_BASE = "https://welcometoyourgalaxy.github.io/executive-map/";
 const FILES=[["execmap_local_police.json",0],["execmap_local_prison.json",1],
              ["execmap_local_townhall.json",2],["execmap_local_firestation.json",3],
              ["execmap_local_govoffice.json",4]];
 
 const CAT=[["Police stations","#5aa9ff"],["Prisons","#ff6b6b"],["Town halls","#ffd166"],
            ["Fire stations","#ff9f43"],["Government offices","#6be675"]];
-let LAT,LNG,C,NAME,N=0; const EN=[true,true,true,true,true];
+let LAT,LNG,C,NAME,WEB,OPER,ADDR,N=0; const EN=[true,true,true,true,true];
 
 const map=L.map("map",{preferCanvas:true,worldCopyJump:true}).setView([20,10],2);
 L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
@@ -66,8 +65,12 @@ map.on("click",function(e){ if(!N)return; const cp=e.containerPoint; let best=-1
   for(let i=0;i<N;i++){ if(!EN[C[i]])continue; const la=LAT[i],lo=LNG[i];
     if(la<S||la>No||lo<W||lo>E)continue; const p=map.latLngToContainerPoint([la,lo]);
     const d=(p.x-cp.x)*(p.x-cp.x)+(p.y-cp.y)*(p.y-cp.y); if(d<bd){bd=d;best=i;} }
-  if(best>=0) L.popup().setLatLng([LAT[best],LNG[best]])
-    .setContent("<b>"+(NAME[best]||"(unnamed)")+"</b><br><span style='color:#8ea3bd;font-size:11px'>"+CAT[C[best]][0].replace(/s$/,"")+"</span>").openOn(map);
+  if(best>=0){ let h="<b>"+(NAME[best]||"(unnamed)")+"</b><br><span style='color:#8ea3bd;font-size:11px'>"+CAT[C[best]][0].replace(/s$/,"")+"</span>";
+    if(ADDR[best]) h+="<br><span style='font-size:11px'>"+ADDR[best]+"</span>";
+    if(OPER[best]) h+="<br><span style='font-size:11px;color:#8ea3bd'>Operator: "+OPER[best]+"</span>";
+    if(WEB[best]){ let u=WEB[best]; if(!/^https?:\/\//i.test(u))u="http://"+u;
+      h+="<br><a href='"+u+"' target='_blank' rel='noopener' style='font-size:11px'>website \u2197</a>"; }
+    L.popup().setLatLng([LAT[best],LNG[best]]).setContent(h).openOn(map); }
 });
 function buildToggles(counts){ const box=document.getElementById("toggles"); box.innerHTML="";
   CAT.forEach((cat,i)=>{ const row=document.createElement("div"); row.className="row";
@@ -79,10 +82,11 @@ Promise.all(FILES.map(f=>fetch(DATA_BASE+f[0])
     .then(r=>{ if(!r.ok)throw new Error(f[0]+": HTTP "+r.status); return r.json(); })
     .then(rows=>({code:f[1],rows}))))
   .then(parts=>{ N=parts.reduce((a,p)=>a+p.rows.length,0);
-    LAT=new Float64Array(N); LNG=new Float64Array(N); C=new Uint8Array(N); NAME=new Array(N);
+    LAT=new Float64Array(N); LNG=new Float64Array(N); C=new Uint8Array(N);
+    NAME=new Array(N); WEB=new Array(N); OPER=new Array(N); ADDR=new Array(N);
     const counts=[0,0,0,0,0]; let k=0;
     parts.forEach(p=>{ for(let i=0;i<p.rows.length;i++){ const r=p.rows[i];
-      LAT[k]=r[0]; LNG[k]=r[1]; C[k]=p.code; NAME[k]=r[2]||""; counts[p.code]++; k++; } });
+      LAT[k]=r[0]; LNG[k]=r[1]; C[k]=p.code; NAME[k]=r[2]||""; WEB[k]=r[3]||""; OPER[k]=r[4]||""; ADDR[k]=r[5]||""; counts[p.code]++; k++; } });
     buildToggles(counts); layer=new Dots(); map.addLayer(layer);
     document.getElementById("load").style.display="none"; })
   .catch(err=>{ document.getElementById("load").innerHTML=

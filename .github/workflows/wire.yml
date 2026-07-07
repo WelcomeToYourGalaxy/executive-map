@@ -1,0 +1,39 @@
+name: Global Wire harvest
+
+# Refreshes wire_archive.json every 6 hours (and on manual dispatch).
+# No secrets / API keys required.
+on:
+  schedule:
+    - cron: '17 */6 * * *'   # every 6h, at :17 to avoid the top-of-hour rush
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  harvest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install feedparser
+        run: pip install --quiet feedparser
+
+      - name: Harvest the wire
+        run: python3 wire_harvest.py
+
+      - name: Commit updated archive
+        run: |
+          git config user.name  "wire-bot"
+          git config user.email "wire-bot@users.noreply.github.com"
+          git add wire_archive.json
+          if git diff --staged --quiet; then
+            echo "No changes to commit."
+          else
+            git commit -m "wire: refresh archive ($(date -u +'%Y-%m-%d %H:%M UTC'))"
+            git push
+          fi
